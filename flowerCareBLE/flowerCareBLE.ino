@@ -204,47 +204,16 @@ BLERemoteCharacteristic* getCharacteristicOfService(BLERemoteService* service, B
 
 void printHex(const char *value, int len)
 {
-   Serial.printf("Value length %d, \n", len);
-   Serial.print("Hex: ");
+   Serial.printf("Value length n = %d, Hex: ", len);
     for (int i = 0; i < len; i++) {
-      //Serial.print("0x");
-    Serial.print((int)value[i], HEX);
+      //Serial.print("0x"); // This prints with 0x before everything
+      if(value[i] < 16)
+        Serial.print("0");
+       Serial.print((int)value[i], HEX);
     Serial.print(" ");
   }
   Serial.println(" ");
 }
-
-//void printRealtimeData(std::string data)
-//{
-//  Serial.println("- Realtime Data");
-//  const char *val = data.c_str();
-//  printHex(val, data.length());
-//
-//  uint16_t* temperature = val[0];
-//  temperature = swap_uint16_Bytes(temperature);
-//
-////  int16_t* temp_raw = (int16_t*)val;
-////  float temperature = (*temp_raw) / ((float)10.0);
-////  Serial.print("-- Temperature raw: ");
-////  Serial.println(temperature);
-////
-////  float temp = ((float)val[0] + val[1] * 256) / 10;
-////  Serial.print("Temperature (in 0.1 Celsius): ");
-////  Serial.println(temp);
-//
-//    int moisture = val[7];
-//  Serial.print("-- Moisture (in %): ");
-//  Serial.println(moisture);
-//
-//  int light = val[3] + val[4] * 256;
-//  Serial.print("-- Light intensity (in lux): ");
-//  Serial.println(light);
-// 
-//  int conductivity = val[8] + val[9] * 256;
-//  Serial.print("-- Conductivity (in µS/cm): ");
-//  Serial.println(conductivity);
-//  
-//}
 
 std::string readCharacteristicValue(BLERemoteCharacteristic* characteristic)
 {
@@ -290,28 +259,34 @@ void printBatteryAndFirmwareVersion(BLERemoteCharacteristic* characteristic)
     }
 }
 
-uint32_t swapBytes(uint32_t value)
-{
-  uint8_t* pointer = (uint8_t*) &value;
-  return ((uint32_t)pointer[3]) + ((uint32_t)pointer[2] << 8) + ((uint32_t)pointer[1] << 16) + ((uint32_t)pointer[0] << 24);
-}
-
-uint16_t swap_uint16_Bytes(uint16_t value)
-{
-  uint8_t* pointer = (uint8_t*) &value;
-  return ((uint16_t)pointer[2]) + ((uint16_t)pointer[1] << 8) + ((uint16_t)pointer[0] << 16);
-}
-
 static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
   uint8_t* pData,
   size_t length,
   bool isNotify) {
+    /*
     Serial.print("Notify callback for characteristic ");
     Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
     Serial.print(" of data length ");
     Serial.println(length);
     Serial.print("data: ");
     Serial.println((char*)pData);
+    */
+}
+
+void printSecondsInDays(int n)
+{
+  int days = n / (24*3600);
+  
+  n = n % (24*3600);
+  int hours = n / 3600;
+
+  n %= 3600;
+  int minutes = n / 60;
+
+  n %= 60;
+  int seconds = n / 60;
+  
+  Serial.printf("%d days, %d hours, %d minutes, %d seconds.\n", days, hours, minutes, seconds);
 }
 
 // BUILT-IN: setup to init and loop for updates ------------------------------------------------------------------
@@ -325,8 +300,6 @@ void setup() {
   BLEDevice::init("");  // better do once for all objects
  // BLEDevice::setPower(ESP_PWR_LVL_P7); // TODO CHeck
     */
-  
-
 }
 
 void loop() {
@@ -357,12 +330,8 @@ void loop() {
     Serial.println("- Device time");
     pRemoteCharacteristic = getCharacteristicOfService(service, uuid_device_time);
     uint32_t deviceBootTime = read_uint32_CharacteristicValue(pRemoteCharacteristic);
-    // returns 1277055, same as hex = 00 13 7C 7F
-    //Serial.printf("Time in seconds since boost: %" PRIu32 "\n", deviceBootTime);
-    // Swap bytes because its encoded in little endian
-    // returning 2138837760, sam as previous hex, but bytes are swapped: 7F 7C 13 00
-    deviceBootTime = swapBytes(deviceBootTime);
     Serial.printf("Time in seconds since boost: %" PRIu32 "\n", deviceBootTime);
+    printSecondsInDays(deviceBootTime);
 
      // Historical sensor data
 //    Serial.println("- History sensor data");
@@ -390,7 +359,6 @@ void loop() {
       std::string value = readCharacteristicValue(pRemoteCharacteristic);
       Serial.println("- Realtime Data");
       const char *val = value.c_str();
-      printHex(val, value.length());
 
       int16_t temperature = ((int16_t*) val)[0];
       Serial.printf("Temperature: %2.1f °C\n", ((float)temperature)/10);
@@ -405,8 +373,6 @@ void loop() {
       Serial.printf("Conductivity: %" PRIu16 " µS/cm \n\n", conductivity);
       // No need to swap temperature
 //     Serial.printf("Temperature in 0.1 degree Celsius: %" PRIu16 "\n", temperature); // Temperature in 0.1 degree Celsius: 288
-//      temperature = swap_uint16_Bytes(temperature);//Temperature after swap: 380
-//      Serial.printf("Temperature after swap: %" PRIu16 "\n", temperature);
     }
     // Temperatur: 0x1D 0x1 
     // ?: 0x0 
@@ -422,31 +388,4 @@ void loop() {
     connected = false; 
   }
    delay(500);
-
-
- 
-    /*
-    if(serviceFound)
-    {
-      if(setServiceInDataMode(&service)==true)
-      {
-        Serial.println("Getting sensor data: TODO");
-      }
-    }
-    else
-      disconnectOnError();/*
-  }
-/*
-  if(connected == true)
-  {
-    Serial.println("Connected, trying to access dataService...");
-    BLERemoteService* dataService = pClient->getService(dataServiceUUID);
-    if (dataService == nullptr) {
-      Serial.print("Failed to find our service UUID: ");
-      Serial.println(dataServiceUUID.toString().c_str());
-      pClient->disconnect();
-      return false;
-    }
-    Serial.println(" - Found our service");
-  }*/
 }
