@@ -6,14 +6,26 @@
 // Resource
 // https://github.com/vrachieru/xiaomi-flower-care-api
 // https://github.com/sidddy/flora/blob/master/flora/flora.ino
+
+// Uncomment to get more information printed out
+//#define DEBUG 0
+#ifdef DEBUG
+  #define DEBUG_PRINT(x)  Serial.print(x)
+  #define DEBUG_PRINTLN(x)  Serial.println(x)
+  #define DEBUG_PRINTF(x,y)  Serial.printf(x,y)
+#else
+  #define DEBUG_PRINT(x)
+  #define DEBUG_PRINTLN(x)
+  #define DEBUG_PRINTF(x,y)
+#endif
+
 // sensor address
-//#define FLORA_ADDR "C4:7C:8D:6A:8E:CA"
 //std::string macAddress = "C4:7C:8D:6A:8E:CA";
-//std::string serviceUUID = "00001204-0000-1000-8000-00805f9b34fb";
 // The remote service we wish to connect to,
 // basically that's the very first service (unknown service) of BLE device, root service used for connecting
 // advertised Service used to discover
 static BLEUUID serviceUUID("0000fe95-0000-1000-8000-00805f9b34fb");
+// Service of battery level, firmware version and real-time sensor data
 static BLEUUID dataServiceUUID("00001204-0000-1000-8000-00805f9b34fb");
 // Handle
 static BLEUUID uuid_write_mode("00001a00-0000-1000-8000-00805f9b34fb");
@@ -56,12 +68,10 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
    * Called for each advertising BLE server.
    */
   void onResult(BLEAdvertisedDevice advertisedDevice) {
-    Serial.print("BLE Advertised Device found: ");
-    Serial.println(advertisedDevice.toString().c_str());
-
     // We have found a device, let us now see if it contains the service we are looking for.
-    Serial.println("Looking for service.");
+    DEBUG_PRINT("Found a BLE device, checking if service UUID is present...");
     if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID)) {
+      Serial.printf("BLE Advertised Device found: \n%s\n", advertisedDevice.toString().c_str());
 
       BLEDevice::getScan()->stop();
       myDevice = new BLEAdvertisedDevice(advertisedDevice);
@@ -71,28 +81,28 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     } // Found our server
     else
     {
-      Serial.println("Service not found.");
+      DEBUG_PRINT("Service not found on this BLE device.");
+      DEBUG_PRINTLN();
     }
   } // onResult
 }; // MyAdvertisedDeviceCallbacks
 
 class MyClientCallback : public BLEClientCallbacks {
   void onConnect(BLEClient* pclient) {
-    Serial.println("onConnect");
+    connected = true;
+    Serial.printf("Callback: onConnect.\n\n");
   }
-
-
 
   void onDisconnect(BLEClient* pclient) {
     connected = false;
-    Serial.println("onDisconnect");
+    Serial.printf("Callback: onDisconnect.\n\n");
   }
 };
 
 // FUNCTIONS ----------------------------------------------------------------------------------------
 void scanBLE()
 {
-  Serial.println("Scanning...");
+  Serial.printf("Scanning for BLE devices with advertisedServiceUUID =  %s...\n", serviceUUID.toString().c_str());
   BLEDevice::init("");
   // Retrieve a Scanner and set the callback we want to use to be informed when we
   // have detected a new device.  Specify that we want active scanning and start the
@@ -104,7 +114,7 @@ void scanBLE()
   pBLEScan->setActiveScan(true);
   pBLEScan->start(5, false);
   delay(1000);
-  Serial.println("Scanning done.");
+  Serial.printf("Scanning done.\n\n");
 }
 
 void disconnectOnError()
@@ -114,21 +124,14 @@ void disconnectOnError()
   connected = false;
 }
 
-bool connectToServer() {
-    Serial.print("Forming a connection to ");
-    Serial.println(myDevice->getAddress().toString().c_str());
+void connectToServer() {
+    Serial.printf("Create client and connecting to %s\n",myDevice->getAddress().toString().c_str());
     
     pClient  = BLEDevice::createClient();
-    Serial.println(" - Created client");
-
     pClient->setClientCallbacks(new MyClientCallback());
 
     // Connect to the remove BLE Server.
     pClient->connect(myDevice);  // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
-    Serial.println(" - Connected to server");
-
-    connected = true;
-    return true;
 }
 
 BLERemoteService* getService(BLEUUID uuid)
@@ -136,29 +139,27 @@ BLERemoteService* getService(BLEUUID uuid)
      // Obtain a reference to the service we are after in the remote BLE server.
     BLERemoteService* pRemoteService = pClient->getService(uuid);
     if (pRemoteService == nullptr) {
-      Serial.print("ERROR: Failed to find service UUID: ");
-      Serial.println(uuid.toString().c_str());
+      Serial.printf("ERROR: Failed to find service UUID: %s\n", uuid.toString().c_str());
+      Serial.println("Make sure the service uuid is correctly and available on your device.\n");
       return pRemoteService;
     }
-    Serial.println(" - Found service.");
     // Service info
     // Real-time data service uuid: 00001204-0000-1000-8000-00805f9b34fb, start_handle: 49 0x0031, end_handle: 57 0x0039
-    Serial.println(pRemoteService->toString().c_str()); 
-
+    DEBUG_PRINTF("Found %s\n",pRemoteService->toString().c_str()); 
     //pRemoteService->getCharacteristics(); // returns nothing
     return pRemoteService;
 }
 
 bool setServiceInDataMode(BLERemoteService* service)
 {
-  Serial.println("Get device mode characteristic type to READ");
+  DEBUG_PRINTF("Getting real-time sensor data: Writing to characteristic %s in order to read values...\n", uuid_write_mode.toString().c_str());
   BLERemoteCharacteristic* characteristic = service->getCharacteristic(uuid_write_mode);
   if(characteristic == nullptr)
   {
     Serial.println("- ERROR: failed getting characteristic.");
     return false;
   }
-  Serial.println("- Writing to characteristic and wait half a second.");
+  DEBUG_PRINTLN("- Writing to characteristic and wait half a second.");
   // write the magic data
   //static *uint8_t[2] _CMD_REAL_TIME_READ_INIT = {0xa0, 0x1f};//bytes([0xa0, 0x1f]);//uint8_t buf[2] = {0xA0, 0x1F};
    uint8_t _CMD_REAL_TIME_READ_INIT[2] = {0xA0, 0x1F};
@@ -195,15 +196,16 @@ BLERemoteCharacteristic* getCharacteristicOfService(BLERemoteService* service, B
     // Characteristic info
     // firmware version and battery Characteristic: uuid: 00001a02-0000-1000-8000-00805f9b34fb, handle: 56 0x0038, props: broadcast: 0, read: 1, write_nr: 0, write: 0, notify: 0, indicate: 0, auth: 0
     // Real-time sensor data Characteristic: uuid: 00001a01-0000-1000-8000-00805f9b34fb, handle: 53 0x0035, props: broadcast: 0, read: 1, write_nr: 0, write: 1, notify: 1, indicate: 0, auth: 0
-    Serial.println("Found characteristic:");
-    Serial.println(characteristic->toString().c_str());
+    DEBUG_PRINT("Found ");
+    DEBUG_PRINTLN(characteristic->toString().c_str());
   }
 
   return characteristic;
 }
 
-void printHex(const char *value, int len)
+void printDebugHex(const char *value, int len)
 {
+  #ifdef DEBUG
    Serial.printf("Value length n = %d, Hex: ", len);
     for (int i = 0; i < len; i++) {
       //Serial.print("0x"); // This prints with 0x before everything
@@ -213,6 +215,7 @@ void printHex(const char *value, int len)
     Serial.print(" ");
   }
   Serial.println(" ");
+  #endif
 }
 
 std::string readCharacteristicValue(BLERemoteCharacteristic* characteristic)
@@ -221,8 +224,8 @@ std::string readCharacteristicValue(BLERemoteCharacteristic* characteristic)
   try{
       value = characteristic->readValue();
       const char *printedValue = value.c_str();
-      Serial.println(printedValue); // returns d+3.2.2
-      printHex(printedValue, value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
+      //Serial.println(printedValue); // returns d+3.2.2
+      printDebugHex(printedValue, value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
     }
     catch(...)
     {
@@ -243,8 +246,8 @@ void printBatteryAndFirmwareVersion(BLERemoteCharacteristic* characteristic)
   try{
       value = characteristic->readValue();
       const char *printedValue = value.c_str();
-      Serial.println(printedValue); // returns d+3.2.2
-      printHex(printedValue, value.length()); //  Hex: 64 2B 33 2E 32 2E 32 
+      //Serial.println(printedValue); // returns d+3.2.2
+      printDebugHex(printedValue, value.length()); //  Hex: 64 2B 33 2E 32 2E 32 
       
       int battery = printedValue[0]; // first value, here 64, with value integer is battery level represnting 100 % battery level
       Serial.printf("Battery level is: %d %% \n", battery);
@@ -308,29 +311,20 @@ void loop() {
   // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
   // connected we set the connected flag to be true.
   if (doConnect == true) {
-    Serial.println("Connecting to server...");
-    if (connectToServer()) {
-      Serial.println("We are now connected to the BLE Server.");
-    } else {
-      Serial.println("We have failed to connect to the server; there is nothin more we will do.");
-    }
+    connectToServer();
     doConnect = false;
   }
 
   if(connected == true)
   {
-    Serial.println("Connected, getting services");
     // DATA SERVICE #2
     Serial.println("# Service: Device time and history data");
     service = getService(historicalServiceUUID);
 
     // Device time
-    //uint8_t deviceTimeHandle = 0x41;
-    //readRequest(service, &deviceTimeHandle);
-    Serial.println("- Device time");
     pRemoteCharacteristic = getCharacteristicOfService(service, uuid_device_time);
     uint32_t deviceBootTime = read_uint32_CharacteristicValue(pRemoteCharacteristic);
-    Serial.printf("Time in seconds since boost: %" PRIu32 "\n", deviceBootTime);
+    Serial.printf("Epoch time = %" PRIu32 " seconds since boot or ", deviceBootTime);
     printSecondsInDays(deviceBootTime);
 
      // Historical sensor data
@@ -341,7 +335,7 @@ void loop() {
 //    std::string value = readCharacteristicValue(pRemoteCharacteristic);
     
     // Data service #1
-    Serial.println("# Service: Firmware version, battery level, real-time sensor data");
+    Serial.println("\n# Service: Firmware version, battery level, real-time sensor data");
     service = getService(dataServiceUUID);
     
     // Characteristic with battery level and firmware version
@@ -355,9 +349,9 @@ void loop() {
 
       if(pRemoteCharacteristic->canNotify())
         pRemoteCharacteristic->registerForNotify(notifyCallback);
-      
+
+      //DEBUG_PRINTF("DEBUG: Real-time sensor data characteristic uuid = %s", uuid_sensor_data.toString().c_str());
       std::string value = readCharacteristicValue(pRemoteCharacteristic);
-      Serial.println("- Realtime Data");
       const char *val = value.c_str();
 
       int16_t temperature = ((int16_t*) val)[0];
