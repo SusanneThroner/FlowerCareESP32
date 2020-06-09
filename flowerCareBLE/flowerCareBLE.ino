@@ -20,38 +20,29 @@
   #define DEBUG_PRINTF(x,y)
 #endif
 
-// sensor address
-//std::string macAddress = "C4:7C:8D:6A:8E:CA";
-// The remote service we wish to connect to,
-// basically that's the very first service (unknown service) of BLE device, root service used for connecting
-// advertised Service used to discover
+// Service #0: Root service used for advertising and connecting
 static BLEUUID serviceAdvertisementUUID("0000fe95-0000-1000-8000-00805f9b34fb");
-// Service of battery level, firmware version and real-time sensor data
-static BLEUUID serviceBatteryFirmwareRealTimeDataUUID("00001204-0000-1000-8000-00805f9b34fb");
-// Characteristics
-// Firmware version and battery level with properties: READ
-static BLEUUID characteristicFirmwareAndBatteryUUID("00001a02-0000-1000-8000-00805f9b34fb");
+
+// Service #1: Real-time sensor data, battery level and firmware version
 // Real-time sensor data with properties: READ, WRITE, NOTIFY
-// Read request needs to be written before being able to read real-time data. I do not know why it's these values.
-uint8_t CMD_REAL_TIME_READ_INIT[2] = {0xA0, 0x1F};
+static BLEUUID serviceBatteryFirmwareRealTimeDataUUID("00001204-0000-1000-8000-00805f9b34fb");
+// Read request needs to be written prior to be able to read real-time data.
+uint8_t CMD_REAL_TIME_READ_INIT[2] = {0xA0, 0x1F}; //  I do not know why it's these values.
 static BLEUUID characteristicReadRequestToRealTimeDataUUID("00001a00-0000-1000-8000-00805f9b34fb");
 static BLEUUID characteristicRealTimeDataUUID("00001a01-0000-1000-8000-00805f9b34fb");
-// Handle
+// Firmware version and battery level with properties: READ
+static BLEUUID characteristicFirmwareAndBatteryUUID("00001a02-0000-1000-8000-00805f9b34fb");
 
+// Service #2: Epoch time and Historical data
+static BLEUUID serviceHistoricalDataUUID("00001206-0000-1000-8000-00805f9b34fb");
+// Characteristic to write a read request to prior to be able to read the historical sensor data values.
+static BLEUUID characteristicReadRequestToHistoricalDataUUID("00001a10-0000-1000-8000-00805f9b34fb");//("00001210-0000-1000-8000-00805f9b34fb");
+uint8_t CMD_HISTORY_READ_INIT[3] = {0xa0, 0x00, 0x00};
+uint8_t CMD_HISTORY_READ_ENTRY[3] = {0xa1, 0x00, 0x00};
+static BLEUUID characteristicHistoricalDataUUID("00001a11-0000-1000-8000-00805f9b34fb");
+// Epoch time values can be directly read of this UUID returning time in seconds since device boot.
+static BLEUUID characteristicEpochTimeUUID("00001a12-0000-1000-8000-00805f9b34fb");
 
-
-// Service #2
-static BLEUUID historicalServiceUUID("00001206-0000-1000-8000-00805f9b34fb");
-static BLEUUID historicalWriteUUID("00001210-0000-1000-8000-00805f9b34fb");
-// Device time
-static BLEUUID uuid_device_time("00001a12-0000-1000-8000-00805f9b34fb");
-// Historical sensor values 
-static BLEUUID uuid_historical_sensor_data("00001a11-0000-1000-8000-00805f9b34fb");
-
-// HANDLES
-//static *uint8_t[2] _CMD_REAL_TIME_READ_INIT = {0xa0, 0x1f};//bytes([0xa0, 0x1f]);//uint8_t buf[2] = {0xA0, 0x1F};
-//static auto _HANDLE_FIRMWARE_AND_BATTERY = 0x38;
-// First advertise: scan for device
 // Then connect to server
 static BLERemoteService* service;
 static BLERemoteCharacteristic* pRemoteCharacteristic;
@@ -71,10 +62,11 @@ class RealTimeEntry
   RealTimeEntry(std::string value)
   {
     const char *val = value.c_str();
-    temperature = ((int16_t*) val)[0];
-    brightness = *(uint32_t*) (val+3);
-    moisture = *(uint8_t*) (val+7);
-    conductivity = *(uint16_t*) (val+8);
+    temperature = ((int16_t*) val)[0];    // 3 bytes 00-02, last byte is sign
+    brightness = *(uint32_t*) (val+3);    // 4 bytes 03-06
+    moisture = *(uint8_t*) (val+7);       // 1 byte  07
+    conductivity = *(uint16_t*) (val+8);  // 2 bytes 08-09
+    // bytes 10-15 unknown
   }
   std::string toString()
   {
@@ -83,9 +75,42 @@ class RealTimeEntry
     count += snprintf(buffer, sizeof(buffer), "Temperature: %2.1f °C\n", ((float)this->temperature)/10);
     count += snprintf(buffer+count, sizeof(buffer)-count, "Brightness: %u lux\n", this->brightness);
     count += snprintf(buffer+count, sizeof(buffer)-count, "Soil moisture: %d \n", this->moisture);
-    count += snprintf(buffer+count, sizeof(buffer)-count, "Conductivity: %" PRIu16 " µS/cm \n\n", this->conductivity);
+    count += snprintf(buffer+count, sizeof(buffer)-count, "Conductivity: %" PRIu16 " µS/cm \n", this->conductivity);
     return (std::string)buffer;
   }
+  int16_t temperature; // in 0.1 °C
+  uint32_t brightness; // in lux
+  uint8_t moisture; // in %
+  uint16_t conductivity; // in µS/cm
+};
+
+class HistoricalEntry
+{
+  public:
+  HistoricalEntry(std::string value)
+  {
+    const char *val = value.c_str();
+    timestamp = ((uint32_t*) val)[0];     // 4 bytes 00-03
+    temperature = *(int16_t*) (val+4);    // 3 bytes 04-06, last byte is sign
+    brightness = *(uint32_t*) (val+7);    // 4 bytes 07-10
+    moisture = *(uint8_t*) (val+11);      // 1 byte  11
+    conductivity = *(uint16_t*) (val+12); // 2 bytes 12-13
+    // bytes 14-15 unknown
+  }
+
+  std::string toString()
+  {
+    char buffer[300];
+    int count = 0;
+    count += snprintf(buffer, sizeof(buffer), "Timestamp: %" PRIu32 " seconds\n", this->timestamp);
+    count += snprintf(buffer+count, sizeof(buffer)-count, "Temperature: %2.1f °C\n", ((float)this->temperature)/10);
+    count += snprintf(buffer+count, sizeof(buffer)-count, "Brightness: %u lux\n", this->brightness);
+    count += snprintf(buffer+count, sizeof(buffer)-count, "Soil moisture: %d \n", this->moisture);
+    count += snprintf(buffer+count, sizeof(buffer)-count, "Conductivity: %" PRIu16 " µS/cm \n", this->conductivity);
+    return (std::string)buffer;
+  }
+
+  uint32_t timestamp; // seconds since device epoch (boot)
   int16_t temperature; // in 0.1 °C
   uint32_t brightness; // in lux
   uint8_t moisture; // in %
@@ -140,11 +165,57 @@ class FlowerCare {
     std::string value = readValue(serviceBatteryFirmwareRealTimeDataUUID, characteristicRealTimeDataUUID);
     return new RealTimeEntry(value);
   }
+
+  void getHistoricalData()
+  {
+    writeValue(serviceHistoricalDataUUID, characteristicReadRequestToHistoricalDataUUID, CMD_HISTORY_READ_INIT, 3);
+    std::string value = readValue(serviceHistoricalDataUUID, characteristicHistoricalDataUUID);
+    const char *val = value.c_str();
+    uint16_t nHistoricalEntries = ((uint16_t*) val)[0];
+    Serial.printf("Found %d history entries:\n", nHistoricalEntries);
+
+    uint8_t entryAddress[3];
+    memcpy(entryAddress, CMD_HISTORY_READ_ENTRY, 3);
+    uint16_t* pEntry = (uint16_t*) &entryAddress[1];
+    if(nHistoricalEntries > 0)
+    {
+      for(int i=0; i < nHistoricalEntries; i++)//nHistoricalEntries; i++)
+      {
+        writeValue(serviceHistoricalDataUUID, characteristicReadRequestToHistoricalDataUUID, entryAddress, 3);
+        value = readValue(serviceHistoricalDataUUID, characteristicHistoricalDataUUID);
+        HistoricalEntry* pHistoricalEntry = new HistoricalEntry(value);
+        Serial.printf("Reading entry #%d of %d total entries in history:\n%s\n\n", i+1, nHistoricalEntries, pHistoricalEntry->toString().c_str());
+        *pEntry += 1;
+      }
+    }
+  }
+  
+  int getEpochTimeInSeconds()
+  {
+    BLERemoteService* pService = getService(serviceHistoricalDataUUID);
+    BLERemoteCharacteristic* pCharacteristic = getCharacteristic(pService, characteristicEpochTimeUUID);
+    _epochTime = pCharacteristic->readUInt32();
+    return _epochTime;
+  }
+
+  void printSecondsInDays(int n)
+  {
+    int days = n / (24*3600);
+    n = n % (24*3600);
+    int hours = n / 3600;
+    n %= 3600;
+    int minutes = n / 60;
+    n %= 60;
+    int seconds = n / 60;
+    Serial.printf("%d days, %d hours, %d minutes, %d seconds.\n", days, hours, minutes, seconds);
+  }
+  
   private:
   std::string _macAddress = "c4:7c:xx:xx:xx:xx";
   std::string _name;
   int _batteryLevel;
   std::string _firmwareVersion = "";
+  uint32_t _epochTime;
 
   std::string readValue(BLEUUID serviceUUID, BLEUUID characteristicUUID)
   {
@@ -163,7 +234,7 @@ class FlowerCare {
     try
     {
       value = pCharacteristic->readValue();
-      printDebugHex(value, value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
+      printDebugHexValue(value, value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
     }
     catch(...)
     {
@@ -201,7 +272,10 @@ class FlowerCare {
     #ifdef DEBUG
     Serial.printf("DEBUG: Writing the following %d bytes: ' ", cmdLength);
     for(int i = 0; i < cmdLength; i++)
-      Serial.printf("%x ", cmd[i] & 0xff);//Serial.printf("%d\n", cmd[i]);
+    {
+      //Serial.print("0x"); // This prints with 0x before everything
+      Serial.printf("%02x ", cmd[i] & 0xff);//Serial.printf("%d\n", cmd[i]);
+    }
     Serial.printf("' to characteristicUUID = %s of serviceUUID = %s \n", characteristicUUID.c_str(), serviceUUID.c_str());
     #endif
   }
@@ -213,9 +287,8 @@ class FlowerCare {
     #endif
   }
 
-  void printDebugHex(std::string value, int len)
+  void printDebugHexValue(std::string value, int len)
   {
-    
     #ifdef DEBUG
      Serial.printf("DEBUG: Value length n = %d, Hex: ", len);
       for (int i = 0; i < len; i++) {
@@ -389,23 +462,6 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
     Serial.println((char*)pData);
     */
 }
-
-void printSecondsInDays(int n)
-{
-  int days = n / (24*3600);
-  
-  n = n % (24*3600);
-  int hours = n / 3600;
-
-  n %= 3600;
-  int minutes = n / 60;
-
-  n %= 60;
-  int seconds = n / 60;
-  
-  Serial.printf("%d days, %d hours, %d minutes, %d seconds.\n", days, hours, minutes, seconds);
-}
-
 // BUILT-IN: setup to init and loop for updates ------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
@@ -438,16 +494,22 @@ void loop() {
     Serial.printf("Mac address: %s\n", flowerCare->getMacAddress().c_str());
     Serial.printf("Battery level: %d %%\n", flowerCare->getBatteryLevel());
     Serial.printf("Firmware version: %s\n", flowerCare->getFirmwareVersion().c_str());
-    Serial.printf("Real time data: %s\n", flowerCare->getRealTimeData()->toString().c_str());
+    Serial.printf("Real time data: \n%s\n", flowerCare->getRealTimeData()->toString().c_str());
+    Serial.printf("Historical data: \n");
+    int epochTimeInSeconds = flowerCare->getEpochTimeInSeconds();
+    Serial.printf("Epoch time: %d seconds or ", epochTimeInSeconds);
+    flowerCare->printSecondsInDays(epochTimeInSeconds); 
+    flowerCare->getHistoricalData();
+    
     // DATA SERVICE #2
-    Serial.println("# Service: Device time and history data");
-    service = getService(historicalServiceUUID);
+//    Serial.println("# Service: Device time and history data");
+//    service = getService(historicalServiceUUID);
 
     // Device time
-    pRemoteCharacteristic = getCharacteristicOfService(service, uuid_device_time);
-    uint32_t deviceBootTime = read_uint32_CharacteristicValue(pRemoteCharacteristic);
-    Serial.printf("Epoch time = %" PRIu32 " seconds since boot or ", deviceBootTime);
-    printSecondsInDays(deviceBootTime);
+//    pRemoteCharacteristic = getCharacteristicOfService(service, uuid_device_time);
+//    uint32_t deviceBootTime = read_uint32_CharacteristicValue(pRemoteCharacteristic);
+//    Serial.printf("Epoch time = %" PRIu32 " seconds since boot or ", deviceBootTime);
+//    printSecondsInDays(deviceBootTime);
 
      // Historical sensor data
 //    Serial.println("- History sensor data");
