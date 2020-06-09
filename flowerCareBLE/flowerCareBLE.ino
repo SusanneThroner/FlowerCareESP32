@@ -1,5 +1,6 @@
 #include "BLEDevice.h"
-// Usage
+// Usage:
+// Select your ESP32 board under: Tools > "Board: [current selected board]" > i.e. "NodeMCU-32s"
 // Open Serial Monitor: Tools > Serial Monitor
 // Then upload to your ESP 32
 
@@ -8,6 +9,7 @@
 // https://github.com/sidddy/flora/blob/master/flora/flora.ino
 
 // Uncomment to get more information printed out
+#define DEBUG
 #ifdef DEBUG
   #define DEBUG_PRINT(x)  Serial.print(x)
   #define DEBUG_PRINTLN(x)  Serial.println(x)
@@ -134,7 +136,7 @@ class FlowerCare {
 
   RealTimeEntry* getRealTimeData()
   {
-    writeValue(serviceBatteryFirmwareRealTimeDataUUID, characteristicReadRequestToRealTimeDataUUID);
+    writeValue(serviceBatteryFirmwareRealTimeDataUUID, characteristicReadRequestToRealTimeDataUUID, CMD_REAL_TIME_READ_INIT, 2);
     std::string value = readValue(serviceBatteryFirmwareRealTimeDataUUID, characteristicRealTimeDataUUID);
     return new RealTimeEntry(value);
   }
@@ -146,6 +148,7 @@ class FlowerCare {
 
   std::string readValue(BLEUUID serviceUUID, BLEUUID characteristicUUID)
   {
+    printDebugReadValue(serviceUUID.toString(), characteristicUUID.toString());
     std::string value = "";
     BLERemoteService* pService = getService(serviceUUID);
     if (pService == nullptr) {
@@ -160,7 +163,7 @@ class FlowerCare {
     try
     {
       value = pCharacteristic->readValue();
-//      printDebugHex(*value.c_str(), value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
+      printDebugHex(value, value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
     }
     catch(...)
     {
@@ -185,12 +188,45 @@ class FlowerCare {
     return pCharacteristic;
   }
 
-  void writeValue(BLEUUID serviceUUID, BLEUUID characteristicUUID)
+  void writeValue(BLEUUID serviceUUID, BLEUUID characteristicUUID, uint8_t* pCMD, int cmdLength)
   {
+    printDebugWriteValue(serviceUUID.toString(), characteristicUUID.toString(), pCMD, cmdLength);
     BLERemoteService* pService = getService(serviceUUID);
-    BLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(characteristicReadRequestToRealTimeDataUUID);
-    pCharacteristic->writeValue(CMD_REAL_TIME_READ_INIT, 2, true);
-   // delay(500);
+    BLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(characteristicUUID);
+    pCharacteristic->writeValue(pCMD, cmdLength, true);
+  }
+
+  void printDebugWriteValue(std::string serviceUUID, std::string characteristicUUID, uint8_t cmd[], int cmdLength)
+  {
+    #ifdef DEBUG
+    Serial.printf("DEBUG: Writing the following %d bytes: ' ", cmdLength);
+    for(int i = 0; i < cmdLength; i++)
+      Serial.printf("%x ", cmd[i] & 0xff);//Serial.printf("%d\n", cmd[i]);
+    Serial.printf("' to characteristicUUID = %s of serviceUUID = %s \n", characteristicUUID.c_str(), serviceUUID.c_str());
+    #endif
+  }
+
+  void printDebugReadValue(std::string serviceUUID, std::string characteristicUUID)
+  {
+    #ifdef DEBUG
+    Serial.printf("DEBUG: Reading value of characteristicUUID = %s of serviceUUID = %s:\n", serviceUUID.c_str(), characteristicUUID.c_str()); 
+    #endif
+  }
+
+  void printDebugHex(std::string value, int len)
+  {
+    
+    #ifdef DEBUG
+     Serial.printf("DEBUG: Value length n = %d, Hex: ", len);
+      for (int i = 0; i < len; i++) {
+        //Serial.print("0x"); // This prints with 0x before everything
+        if(value[i] < 16)
+          Serial.print("0");
+         Serial.print((int)value[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println(" ");
+    #endif
   }
 };
 
@@ -286,44 +322,6 @@ BLERemoteService* getService(BLEUUID uuid)
     return pRemoteService;
 }
 
-bool setServiceInDataMode(BLERemoteService* service)
-{
-  DEBUG_PRINTF("Getting real-time sensor data: Writing to characteristic %s in order to read values...\n", characteristicReadRequestToRealTimeDataUUID.toString().c_str());
-  BLERemoteCharacteristic* characteristic = service->getCharacteristic(characteristicReadRequestToRealTimeDataUUID);
-  Serial.printf("READ REQUEST: %s\n", characteristic->toString().c_str());
-  Serial.printf("VALUE = %s\n", characteristic->readValue().c_str());
-  readCharacteristicValue(characteristic);
-  if(characteristic == nullptr)
-  {
-    Serial.println("- ERROR: failed getting characteristic.");
-    return false;
-  }
-  DEBUG_PRINTLN("- Writing to characteristic and wait half a second.");
-  //static *uint8_t[2] _CMD_REAL_TIME_READ_INIT = {0xa0, 0x1f};//bytes([0xa0, 0x1f]);//uint8_t buf[2] = {0xA0, 0x1F};
-   uint8_t _CMD_REAL_TIME_READ_INIT[2] = {0xA0, 0x1F};
-  characteristic->writeValue(_CMD_REAL_TIME_READ_INIT, 2, true);
-
- // delay(500);
-  return true;
-}
-
-void readRealTimeDataRequest(BLERemoteService* service, uint8_t* handle)
-{
-  Serial.println("Read request from client:");
- // Serial.println(handle);
-  BLERemoteCharacteristic* characteristic = service->getCharacteristic(characteristicReadRequestToRealTimeDataUUID);
-  if(characteristic == nullptr)
-  {
-    Serial.println("- ERROR: failed getting characteristic.");
-  }
-  else
-  {
-    Serial.println("- Writing to characteristic and wait half a second.");
-    delay(500);
-    characteristic->writeValue(handle, 1, true);
-  }
-}
-
 BLERemoteCharacteristic* getCharacteristicOfService(BLERemoteService* service, BLEUUID characteristicUUID)
 {
   BLERemoteCharacteristic* characteristic = service->getCharacteristic(characteristicUUID);
@@ -344,7 +342,7 @@ BLERemoteCharacteristic* getCharacteristicOfService(BLERemoteService* service, B
 void printDebugHex(const char *value, int len)
 {
   #ifdef DEBUG
-   Serial.printf("Value length n = %d, Hex: ", len);
+   Serial.printf("DEBUG: Value length n = %d, Hex: ", len);
     for (int i = 0; i < len; i++) {
       //Serial.print("0x"); // This prints with 0x before everything
       if(value[i] < 16)
