@@ -1,12 +1,14 @@
 #include "BLEDevice.h"
 // Usage:
 // Select your ESP32 board under: Tools > "Board: [current selected board]" > i.e. "NodeMCU-32s"
+// Connect your ESP32 via USB
 // Open Serial Monitor: Tools > Serial Monitor
+// On bottom set Serial Monitor to: 115200 baud for receiving output
 // Then upload to your ESP 32
 
 // Resource
-// https://github.com/vrachieru/xiaomi-flower-care-api
-// https://github.com/sidddy/flora/blob/master/flora/flora.ino
+// For reading and writing values, as well as data structure: https://github.com/vrachieru/xiaomi-flower-care-api
+// For BLE connection:
 
 // Uncomment to get more information printed out
 // #define DEBUG
@@ -50,6 +52,8 @@ static BLEClient*  pClient;
 static boolean doConnect = false;
 static boolean connected = false;
 static boolean doScan = false;
+static boolean readingHistoricalEntries = false;
+static int lastValidHistoricalEntryIndx = 0;
 
 // CLASSES -------------------------------------------------------------------------------------------
 class RealTimeEntry
@@ -113,10 +117,47 @@ class HistoricalEntry
   uint16_t conductivity; // in µS/cm
 };
 
+/**
+ * Scan for BLE servers and find the first one that advertises the service we are looking for.
+ */
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+ /**
+   * Called for each advertising BLE server.
+   */
+  void onResult(BLEAdvertisedDevice advertisedDevice) {
+    // We have found a device, let us now see if it contains the service we are looking for.
+    DEBUG_PRINT("Found a BLE device, checking if service UUID is present...");
+    if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceAdvertisementUUID)) {
+      Serial.printf("BLE Advertised Device found: \n%s\n", advertisedDevice.toString().c_str());
+
+      BLEDevice::getScan()->stop();
+      myDevice = new BLEAdvertisedDevice(advertisedDevice);
+      doConnect = true;
+      doScan = true;
+
+    } // Found our server
+    else
+      DEBUG_PRINT("Service not found on this BLE device.\n");
+  } // onResult
+}; // MyAdvertisedDeviceCallbacks
+
+class MyClientCallback : public BLEClientCallbacks {
+  void onConnect(BLEClient* pclient) {
+    connected = true;
+    Serial.printf("Callback: onConnect.\n\n");
+  }
+
+  void onDisconnect(BLEClient* pclient) {
+    connected = false;
+    Serial.printf("Callback: onDisconnect.\n\n");
+  }
+};
+
 class FlowerCare {
   public:
   FlowerCare()
   {
+    scanBLE();
     if(myDevice->haveName())
       _name = myDevice->getName();
     else
@@ -124,6 +165,32 @@ class FlowerCare {
 
     _macAddress = myDevice->getAddress().toString();
   }
+
+  void scanBLE()
+  {
+    Serial.printf("Scanning for BLE devices with serviceAdvertisementUUID =  %s...\n", serviceAdvertisementUUID.toString().c_str());
+    BLEDevice::init("");
+    // Retrieve a Scanner and set the callback we want to use to be informed when we
+    // have detected a new device.  Specify that we want active scanning and start the
+    // scan to run for 5 seconds.
+    BLEScan* pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setInterval(1349);
+    pBLEScan->setWindow(449);
+    pBLEScan->setActiveScan(true);
+    pBLEScan->start(5, false);
+    delay(1000);
+    Serial.printf("Scanning done.\n\n");
+  }
+
+  void connectToServer()
+  {
+      Serial.printf("Create client and connecting to %s\n", myDevice->getAddress().toString().c_str());
+      pClient  = BLEDevice::createClient();
+      pClient->setClientCallbacks(new MyClientCallback());
+      pClient->connect(myDevice);  // Connect to the remove BLE Server.
+  }
+
   
   std::string getMacAddress()
   {
@@ -162,14 +229,19 @@ class FlowerCare {
     return new RealTimeEntry(value);
   }
 
-  void getHistoricalData()
+  uint16_t nHistoricalEntries;
+
+  std::vector<HistoricalEntry> getHistoricalData()
   {
+    Serial.println("Reading historical entries, this may take some time...");
+    readingHistoricalEntries = true;
     writeValue(serviceHistoricalDataUUID, characteristicReadRequestToHistoricalDataUUID, CMD_HISTORY_READ_INIT, 3);
     std::string value = readValue(serviceHistoricalDataUUID, characteristicHistoricalDataUUID);
     const char *val = value.c_str();
-    uint16_t nHistoricalEntries = ((uint16_t*) val)[0];
+    nHistoricalEntries = ((uint16_t*) val)[0];
     Serial.printf("Found %d history entries:\n", nHistoricalEntries);
 
+    std::vector<HistoricalEntry> historicalEntries;
     uint8_t entryAddress[3];
     memcpy(entryAddress, CMD_HISTORY_READ_ENTRY, 3);
     uint16_t* pEntry = (uint16_t*) &entryAddress[1];
@@ -182,16 +254,28 @@ class FlowerCare {
           writeValue(serviceHistoricalDataUUID, characteristicReadRequestToHistoricalDataUUID, entryAddress, 3);
           value = readValue(serviceHistoricalDataUUID, characteristicHistoricalDataUUID);
           HistoricalEntry* pHistoricalEntry = new HistoricalEntry(value);
-          Serial.printf("Reading entry #%d of %d total entries in history:\n%s\n", i+1, nHistoricalEntries, pHistoricalEntry->toString().c_str());
-          *pEntry += 1;
+          // When connection is lost, false values are read, so ensure only valid data is added
+          if(pHistoricalEntry->timestamp > 1) 
+          {
+            historicalEntries.push_back(*pHistoricalEntry);
+            *pEntry += 1;
+          }
+          else
+          {
+            Serial.printf("ERROR: Invalid historical entry #%d detected:\n%s\n", i, pHistoricalEntry->toString().c_str());
+            lastValidHistoricalEntryIndx = i;
+            return historicalEntries;
+          }
         }
         else
         {
-          i = nHistoricalEntries;
           Serial.println("ERROR: BLE connection lost, stopped reading historical entries");
+          return historicalEntries;
         }
       }
     }
+    Serial.println("Successfully read all historical data.");
+    return historicalEntries;
   }
   
   int getEpochTimeInSeconds()
@@ -270,7 +354,16 @@ class FlowerCare {
     BLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(characteristicUUID);
     pCharacteristic->writeValue(pCMD, cmdLength, true);
   }
+  
+  void disconnectOnError()
+  {
+    Serial.println("Disconnecting BLE connection due to error.");
+    pClient->disconnect();
+    connected = false;
+  }
+  
 
+  // Debug prints--------------------------------------------------------------------------------------------
   void printDebugWriteValue(std::string serviceUUID, std::string characteristicUUID, uint8_t cmd[], int cmdLength)
   {
     #ifdef DEBUG
@@ -300,80 +393,12 @@ class FlowerCare {
 };
 
 static FlowerCare* flowerCare;
-/**
- * Scan for BLE servers and find the first one that advertises the service we are looking for.
- */
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
- /**
-   * Called for each advertising BLE server.
-   */
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-    // We have found a device, let us now see if it contains the service we are looking for.
-    DEBUG_PRINT("Found a BLE device, checking if service UUID is present...");
-    if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceAdvertisementUUID)) {
-      Serial.printf("BLE Advertised Device found: \n%s\n", advertisedDevice.toString().c_str());
 
-      BLEDevice::getScan()->stop();
-      myDevice = new BLEAdvertisedDevice(advertisedDevice);
-      flowerCare = new FlowerCare();
-      doConnect = true;
-      doScan = true;
-
-    } // Found our server
-    else
-      DEBUG_PRINT("Service not found on this BLE device.\n");
-  } // onResult
-}; // MyAdvertisedDeviceCallbacks
-
-class MyClientCallback : public BLEClientCallbacks {
-  void onConnect(BLEClient* pclient) {
-    connected = true;
-    Serial.printf("Callback: onConnect.\n\n");
-  }
-
-  void onDisconnect(BLEClient* pclient) {
-    connected = false;
-    Serial.printf("Callback: onDisconnect.\n\n");
-  }
-};
-
-// FUNCTIONS ----------------------------------------------------------------------------------------
-void scanBLE()
-{
-  Serial.printf("Scanning for BLE devices with serviceAdvertisementUUID =  %s...\n", serviceAdvertisementUUID.toString().c_str());
-  BLEDevice::init("");
-  // Retrieve a Scanner and set the callback we want to use to be informed when we
-  // have detected a new device.  Specify that we want active scanning and start the
-  // scan to run for 5 seconds.
-  BLEScan* pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setInterval(1349);
-  pBLEScan->setWindow(449);
-  pBLEScan->setActiveScan(true);
-  pBLEScan->start(5, false);
-  delay(1000);
-  Serial.printf("Scanning done.\n\n");
-}
-
-void disconnectOnError()
-{
-  Serial.println("Disconnecting BLE connection due to error.");
-  pClient->disconnect();
-  connected = false;
-}
-
-void connectToServer() {
-    Serial.printf("Create client and connecting to %s\n", myDevice->getAddress().toString().c_str());
-    pClient  = BLEDevice::createClient();
-    pClient->setClientCallbacks(new MyClientCallback());
-    pClient->connect(myDevice);  // Connect to the remove BLE Server.
-}
 // BUILT-IN: setup to init and loop for updates ------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  Serial.println("Starting Arduino BLE Client application...");
-  delay(100);
-  scanBLE();
+  flowerCare = new FlowerCare();
+  //scanBLE();
 }
 
 void loop() {
@@ -382,7 +407,7 @@ void loop() {
   // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
   // connected we set the connected flag to be true.
   if (doConnect == true) {
-    connectToServer();
+    flowerCare->connectToServer();
     doConnect = false;
   }
 
@@ -397,8 +422,11 @@ void loop() {
     int epochTimeInSeconds = flowerCare->getEpochTimeInSeconds();
     Serial.printf("Epoch time: %d seconds or ", epochTimeInSeconds);
     flowerCare->printSecondsInDays(epochTimeInSeconds); 
-    flowerCare->getHistoricalData();
+    std::vector<HistoricalEntry> historicalEntries = flowerCare->getHistoricalData();
+    for(std::vector<HistoricalEntry>::size_type i = 0; i != historicalEntries.size(); i++)
+      Serial.printf("Entry #%d:\n%s\n", i, historicalEntries[i].toString().c_str());
+    delay(20000);
     connected = false; 
   }
-   delay(500);
+   delay(10000);
 }
