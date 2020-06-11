@@ -9,43 +9,40 @@
 // https://github.com/sidddy/flora/blob/master/flora/flora.ino
 
 // Uncomment to get more information printed out
-#define DEBUG
+// #define DEBUG
 #ifdef DEBUG
   #define DEBUG_PRINT(x)  Serial.print(x)
-  #define DEBUG_PRINTLN(x)  Serial.println(x)
   #define DEBUG_PRINTF(x,y)  Serial.printf(x,y)
 #else
   #define DEBUG_PRINT(x)
-  #define DEBUG_PRINTLN(x)
   #define DEBUG_PRINTF(x,y)
 #endif
 
-// Service #0: Root service used for advertising and connecting
+// Service #0: Root service used for advertising of Bluetooth low energy (BLE) connection
 static BLEUUID serviceAdvertisementUUID("0000fe95-0000-1000-8000-00805f9b34fb");
 
 // Service #1: Real-time sensor data, battery level and firmware version
 // Real-time sensor data with properties: READ, WRITE, NOTIFY
 static BLEUUID serviceBatteryFirmwareRealTimeDataUUID("00001204-0000-1000-8000-00805f9b34fb");
 // Read request needs to be written prior to be able to read real-time data.
-uint8_t CMD_REAL_TIME_READ_INIT[2] = {0xA0, 0x1F}; //  I do not know why it's these values.
-static BLEUUID characteristicReadRequestToRealTimeDataUUID("00001a00-0000-1000-8000-00805f9b34fb");
-static BLEUUID characteristicRealTimeDataUUID("00001a01-0000-1000-8000-00805f9b34fb");
-// Firmware version and battery level with properties: READ
+uint8_t CMD_REAL_TIME_READ_INIT[2] = {0xA0, 0x1F};                                                  //  write these two bytes...
+static BLEUUID characteristicReadRequestToRealTimeDataUUID("00001a00-0000-1000-8000-00805f9b34fb"); // ...to this characteristic 
+static BLEUUID characteristicRealTimeDataUUID("00001a01-0000-1000-8000-00805f9b34fb");              // ...in order to read actual values of this characteristic
+// Firmware version and battery level with properties: READ can be directly read returning battery level in % and firmware version in '3.2.2' notation.
 static BLEUUID characteristicFirmwareAndBatteryUUID("00001a02-0000-1000-8000-00805f9b34fb");
 
 // Service #2: Epoch time and Historical data
 static BLEUUID serviceHistoricalDataUUID("00001206-0000-1000-8000-00805f9b34fb");
-// Characteristic to write a read request to prior to be able to read the historical sensor data values.
-static BLEUUID characteristicReadRequestToHistoricalDataUUID("00001a10-0000-1000-8000-00805f9b34fb");//("00001210-0000-1000-8000-00805f9b34fb");
-uint8_t CMD_HISTORY_READ_INIT[3] = {0xa0, 0x00, 0x00};
-uint8_t CMD_HISTORY_READ_ENTRY[3] = {0xa1, 0x00, 0x00};
-static BLEUUID characteristicHistoricalDataUUID("00001a11-0000-1000-8000-00805f9b34fb");
+// Read request needs to be written prior to be able to read real-time data.
+uint8_t CMD_HISTORY_READ_INIT[3] = {0xa0, 0x00, 0x00};                                              // write these three bytes...
+static BLEUUID characteristicReadRequestToHistoricalDataUUID("00001a10-0000-1000-8000-00805f9b34fb");// ...to this characteristic (Write Characteristic)
+static BLEUUID characteristicHistoricalDataUUID("00001a11-0000-1000-8000-00805f9b34fb");            // ...in order to read number of historical entries (Read Characteristic)
+// afterwards you can write the history entry addresses to Write Characteristic and then read the value stored in the Read Characteristic one by one
+uint8_t CMD_HISTORY_READ_ENTRY[3] = {0xa1, 0x00, 0x00}; // 0xa1 is fixed, 0x00 00 represents entry #1, 0x01 00 represents entry #2, 0x02 00 entry #3, ...
 // Epoch time values can be directly read of this UUID returning time in seconds since device boot.
 static BLEUUID characteristicEpochTimeUUID("00001a12-0000-1000-8000-00805f9b34fb");
 
 // Then connect to server
-static BLERemoteService* service;
-static BLERemoteCharacteristic* pRemoteCharacteristic;
 static BLEAdvertisedDevice* myDevice;
 static BLEClient*  pClient;
 
@@ -53,7 +50,6 @@ static BLEClient*  pClient;
 static boolean doConnect = false;
 static boolean connected = false;
 static boolean doScan = false;
-static boolean serviceFound = false;
 
 // CLASSES -------------------------------------------------------------------------------------------
 class RealTimeEntry
@@ -181,11 +177,19 @@ class FlowerCare {
     {
       for(int i=0; i < nHistoricalEntries; i++)//nHistoricalEntries; i++)
       {
-        writeValue(serviceHistoricalDataUUID, characteristicReadRequestToHistoricalDataUUID, entryAddress, 3);
-        value = readValue(serviceHistoricalDataUUID, characteristicHistoricalDataUUID);
-        HistoricalEntry* pHistoricalEntry = new HistoricalEntry(value);
-        Serial.printf("Reading entry #%d of %d total entries in history:\n%s\n\n", i+1, nHistoricalEntries, pHistoricalEntry->toString().c_str());
-        *pEntry += 1;
+        if(connected)
+        {
+          writeValue(serviceHistoricalDataUUID, characteristicReadRequestToHistoricalDataUUID, entryAddress, 3);
+          value = readValue(serviceHistoricalDataUUID, characteristicHistoricalDataUUID);
+          HistoricalEntry* pHistoricalEntry = new HistoricalEntry(value);
+          Serial.printf("Reading entry #%d of %d total entries in history:\n%s\n", i+1, nHistoricalEntries, pHistoricalEntry->toString().c_str());
+          *pEntry += 1;
+        }
+        else
+        {
+          i = nHistoricalEntries;
+          Serial.println("ERROR: BLE connection lost, stopped reading historical entries");
+        }
       }
     }
   }
@@ -234,7 +238,7 @@ class FlowerCare {
     try
     {
       value = pCharacteristic->readValue();
-      printDebugHexValue(value, value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
+      printDebugHexValue(value, value.length());
     }
     catch(...)
     {
@@ -255,7 +259,7 @@ class FlowerCare {
   {
     BLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(characteristicUUID);
     if(pCharacteristic == nullptr)
-      Serial.printf("ERROR: Failed to get characteristic UUID: %s. Check if the characteristic UUID is correct and exists in given service UUID: %s.\n", characteristicUUID.toString().c_str(), service->getUUID().toString().c_str());
+      Serial.printf("ERROR: Failed to get characteristic UUID: %s. Check if the characteristic UUID is correct and exists in given service UUID: %s.\n", characteristicUUID.toString().c_str(), pService->getUUID().toString().c_str());
     return pCharacteristic;
   }
 
@@ -272,10 +276,7 @@ class FlowerCare {
     #ifdef DEBUG
     Serial.printf("DEBUG: Writing the following %d bytes: ' ", cmdLength);
     for(int i = 0; i < cmdLength; i++)
-    {
-      //Serial.print("0x"); // This prints with 0x before everything
-      Serial.printf("%02x ", cmd[i] & 0xff);//Serial.printf("%d\n", cmd[i]);
-    }
+      Serial.printf("%02x ", cmd[i] & 0xff);
     Serial.printf("' to characteristicUUID = %s of serviceUUID = %s \n", characteristicUUID.c_str(), serviceUUID.c_str());
     #endif
   }
@@ -291,13 +292,8 @@ class FlowerCare {
   {
     #ifdef DEBUG
      Serial.printf("DEBUG: Value length n = %d, Hex: ", len);
-      for (int i = 0; i < len; i++) {
-        //Serial.print("0x"); // This prints with 0x before everything
-        if(value[i] < 16)
-          Serial.print("0");
-         Serial.print((int)value[i], HEX);
-      Serial.print(" ");
-    }
+      for (int i = 0; i < len; i++)
+        Serial.printf("%02x ", (int)value[i]); 
     Serial.println(" ");
     #endif
   }
@@ -325,10 +321,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
     } // Found our server
     else
-    {
-      DEBUG_PRINT("Service not found on this BLE device.");
-      DEBUG_PRINTLN();
-    }
+      DEBUG_PRINT("Service not found on this BLE device.\n");
   } // onResult
 }; // MyAdvertisedDeviceCallbacks
 
@@ -364,103 +357,16 @@ void scanBLE()
 
 void disconnectOnError()
 {
-  Serial.println("Disconnecting...");
+  Serial.println("Disconnecting BLE connection due to error.");
   pClient->disconnect();
   connected = false;
 }
 
 void connectToServer() {
-    Serial.printf("Create client and connecting to %s\n",myDevice->getAddress().toString().c_str());
-    
+    Serial.printf("Create client and connecting to %s\n", myDevice->getAddress().toString().c_str());
     pClient  = BLEDevice::createClient();
     pClient->setClientCallbacks(new MyClientCallback());
-
-    // Connect to the remove BLE Server.
-    pClient->connect(myDevice);  // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
-}
-
-BLERemoteService* getService(BLEUUID uuid)
-{
-     // Obtain a reference to the service we are after in the remote BLE server.
-    BLERemoteService* pRemoteService = pClient->getService(uuid);
-    if (pRemoteService == nullptr) {
-      Serial.printf("ERROR: Failed to find service UUID: %s\n", uuid.toString().c_str());
-      Serial.println("Make sure the service uuid is correctly and available on your device.\n");
-      return pRemoteService;
-    }
-    // Service info
-    // Real-time data service uuid: 00001204-0000-1000-8000-00805f9b34fb, start_handle: 49 0x0031, end_handle: 57 0x0039
-    DEBUG_PRINTF("Found %s\n",pRemoteService->toString().c_str()); 
-    //pRemoteService->getCharacteristics(); // returns nothing
-    return pRemoteService;
-}
-
-BLERemoteCharacteristic* getCharacteristicOfService(BLERemoteService* service, BLEUUID characteristicUUID)
-{
-  BLERemoteCharacteristic* characteristic = service->getCharacteristic(characteristicUUID);
-  if(characteristic == nullptr)
-    Serial.println("ERROR: failed to get sensor data characteristic.");
-  else
-  {
-    // Characteristic info
-    // firmware version and battery Characteristic: uuid: 00001a02-0000-1000-8000-00805f9b34fb, handle: 56 0x0038, props: broadcast: 0, read: 1, write_nr: 0, write: 0, notify: 0, indicate: 0, auth: 0
-    // Real-time sensor data Characteristic: uuid: 00001a01-0000-1000-8000-00805f9b34fb, handle: 53 0x0035, props: broadcast: 0, read: 1, write_nr: 0, write: 1, notify: 1, indicate: 0, auth: 0
-    DEBUG_PRINT("Found ");
-    DEBUG_PRINTLN(characteristic->toString().c_str());
-  }
-
-  return characteristic;
-}
-
-void printDebugHex(const char *value, int len)
-{
-  #ifdef DEBUG
-   Serial.printf("DEBUG: Value length n = %d, Hex: ", len);
-    for (int i = 0; i < len; i++) {
-      //Serial.print("0x"); // This prints with 0x before everything
-      if(value[i] < 16)
-        Serial.print("0");
-       Serial.print((int)value[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println(" ");
-  #endif
-}
-
-std::string readCharacteristicValue(BLERemoteCharacteristic* characteristic)
-{
-  std::string value;
-  try{
-      value = characteristic->readValue();
-      const char *printedValue = value.c_str();
-      //Serial.println(printedValue); // returns d+3.2.2
-      printDebugHex(printedValue, value.length()); //  Hex example for battery and firmware: 64 2B 33 2E 32 2E 32 
-    }
-    catch(...)
-    {
-      Serial.println("ERROR: failed reading value of characteristic.");
-    }
-    return value;
-}
-
-uint32_t read_uint32_CharacteristicValue(BLERemoteCharacteristic* characteristic)
-{
-  uint32_t value = characteristic->readUInt32();
-  return value;
-}
-
-static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
-  uint8_t* pData,
-  size_t length,
-  bool isNotify) {
-    /*
-    Serial.print("Notify callback for characteristic ");
-    Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-    Serial.print(" of data length ");
-    Serial.println(length);
-    Serial.print("data: ");
-    Serial.println((char*)pData);
-    */
+    pClient->connect(myDevice);  // Connect to the remove BLE Server.
 }
 // BUILT-IN: setup to init and loop for updates ------------------------------------------------------------------
 void setup() {
@@ -468,12 +374,6 @@ void setup() {
   Serial.println("Starting Arduino BLE Client application...");
   delay(100);
   scanBLE();
-  
-  /*
-  // initialize BLE and create client
-  BLEDevice::init("");  // better do once for all objects
- // BLEDevice::setPower(ESP_PWR_LVL_P7); // TODO CHeck
-    */
 }
 
 void loop() {
@@ -486,10 +386,8 @@ void loop() {
     doConnect = false;
   }
 
-
   if(connected == true)
   {
-    Serial.println("TEST");
     Serial.printf("Name: %s\n", flowerCare->getName().c_str());
     Serial.printf("Mac address: %s\n", flowerCare->getMacAddress().c_str());
     Serial.printf("Battery level: %d %%\n", flowerCare->getBatteryLevel());
@@ -500,69 +398,6 @@ void loop() {
     Serial.printf("Epoch time: %d seconds or ", epochTimeInSeconds);
     flowerCare->printSecondsInDays(epochTimeInSeconds); 
     flowerCare->getHistoricalData();
-    
-    // DATA SERVICE #2
-//    Serial.println("# Service: Device time and history data");
-//    service = getService(historicalServiceUUID);
-
-    // Device time
-//    pRemoteCharacteristic = getCharacteristicOfService(service, uuid_device_time);
-//    uint32_t deviceBootTime = read_uint32_CharacteristicValue(pRemoteCharacteristic);
-//    Serial.printf("Epoch time = %" PRIu32 " seconds since boot or ", deviceBootTime);
-//    printSecondsInDays(deviceBootTime);
-
-     // Historical sensor data
-//    Serial.println("- History sensor data");
-//    uint8_t historicalTimeHandle = 0x3e;
-//    readRequest(service, &historicalTimeHandle);
-//    pRemoteCharacteristic = getCharacteristicOfService(service, uuid_historical_sensor_data); // ERROR: failed to get sensor data characteristic. if service does not have this characteristic
-//    std::string value = readCharacteristicValue(pRemoteCharacteristic);
-
-    // Data service #1
-    /*Serial.println("\n# Service: Firmware version, battery level, real-time sensor data");
-    service = getService(serviceBatteryFirmwareRealTimeDataUUID);
-    
-    // Characteristic with battery level and firmware version
-    pRemoteCharacteristic = getCharacteristicOfService(service, characteristicFirmwareAndBatteryUUID);
-    setServiceInDataMode(service);
-    
-    // Real-time sensor data characteristic
-    if(setServiceInDataMode(service)==true)
-    {
-      pRemoteCharacteristic = getCharacteristicOfService(service, characteristicRealTimeDataUUID);
-
-      if(pRemoteCharacteristic->canNotify())
-        pRemoteCharacteristic->registerForNotify(notifyCallback);
-
-      //DEBUG_PRINTF("DEBUG: Real-time sensor data characteristic uuid = %s", characteristicRealTimeDataUUID.toString().c_str());
-      std::string value = readCharacteristicValue(pRemoteCharacteristic);
-      const char *val = value.c_str();
-
-      int16_t temperature = ((int16_t*) val)[0];
-      Serial.printf("Temperature: %2.1f °C\n", ((float)temperature)/10);
-      
-      uint32_t brightness = *(uint32_t*) (val+3);
-      Serial.printf("Brightness: %u lux\n", brightness);
-
-      uint8_t moisture = *(uint8_t*) (val+7);
-      Serial.printf("Soil moisture: %d \n", moisture);
-
-      uint16_t conductivity = *(uint16_t*) (val+8);
-      Serial.printf("Conductivity: %" PRIu16 " µS/cm \n\n", conductivity);
-      // No need to swap temperature
-//     Serial.printf("Temperature in 0.1 degree Celsius: %" PRIu16 "\n", temperature); // Temperature in 0.1 degree Celsius: 288
-    }*/
-    // Temperatur: 0x1D 0x1 
-    // ?: 0x0 
-    // uint32 Brightness: 0xE9 0x2 0x0 0x0 
-    // uint8 Soil moisture: 0x0 0x0
-    // uint16 Conductivity: 0x0 0x2 0x3C 
-    // 0x0 0xFB 0x34 0x9B  
-
-    // Fail not in data mode: Hex: AA BB CC DD EE FF 99 88 77 66 
-    // 18 1 0 92 0 0 0 1 0 0 2 3C 0 FB 34 9B  
-   // Serial.print(value, HEX);
-   // setServiceInDataMode(service);
     connected = false; 
   }
    delay(500);
