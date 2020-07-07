@@ -50,7 +50,7 @@ If you're using a hex converter (i.e. [RapidTables](https://www.rapidtables.com/
 | 08-09     | 0000          | 0000          | uint16    | 0         | Conductivity in µS/cm             |
 | 10-15     | 023C00FB349B  | 9B34FB003C02  | ?         | ?         | unknown, seems to be fixed value  |
 
-* value[0:1] = `0A 01`: swap bytes (little endian) -> `010A`: first byte (00) is plus sign, convert `010A` to decimal: 266 -> +266 * 0.1 °C = 26.6 °C
+* value[0:1] = `0A 01`: swap bytes (little endian) -> `010A`, convert `010A` to decimal: 266 -> +266 * 0.1 °C = 26.6 °C
 * value[2] = `00`: unknown, seems to be constant
 * value[3:6] = `3A 01 00 00`: swap bytes (little endian) -> `0000013A` = 314 lux
 * value[7] = `00` = 0% soil moisture
