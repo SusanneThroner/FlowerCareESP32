@@ -41,7 +41,8 @@ Ig you're using a hex converter (i.e. [RapidTables](https://www.rapidtables.com/
 
 * value output in hex: `0A 01 00 3A 01 00 00 00 00 00 02 3C 00 FB 34 9B` 
 * 
-| Position  | 00-01 | 02    | 03-06         | 07    | 08-09     | 10-15 |
+| Position  | 00-01     | 02        | 03-06         | 07        | 08-09     | 10-15 |
+| ------    | ------    | ------    | ------        | ------    | ------    | ------    |
 | Hex Value | 0A01  | 00    | 3A010000      | 00    | 0000      | 02 3C 00 FB 34 9B |
 | Type      | int16 | ?     | uint32        | uint8 | uint16    | ? |
 | Value     | 266   | ?     | 314           | 0     | 0         | ? |
