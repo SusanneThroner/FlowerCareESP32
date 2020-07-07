@@ -13,7 +13,8 @@ Description | Characteristic UUID| Handle | Value | Properties |
 **Real-time data read request** | 0000**1a00**-0000-1000-8000-00805f9b34fb| 51 0x0033 | length = 2 bytes | read, write |
 Write this command before reading real-time data | " | " | 0xa01f | write |
 **Real-time sensor data** | 0000**1a01**-0000-1000-8000-00805f9b34fb| 53 0x0035 | length = 16 bytes | read, write, notify |
-Temperature in +/- 0.1 °C| " | " | position 0-3: int16 | read |
+Temperature in +/- 0.1 °C| " | " | position 0-2: int16 | read |
+*unknown, seems to be a fixed 00* | " | " | position 2: ? | read |
 Brightness in lux | " | " | position 4-6: uint32 | read |
 Soil moisture in % | " | " | position 7: uint8 | read |
 µS/cm (indirect measure for pH level) | " | " | position 8-9: uint16 | read |
@@ -39,11 +40,12 @@ After writing the previous mentioned value you should receive a 16 byte long hex
 Ig you're using a hex converter (i.e. [RapidTables](https://www.rapidtables.com/convert/number/hex-to-decimal.html)) make sure you swap the bytes order because the data is encoded in little endian (the least-significant byte is stored at the smallest address).
 
 * value output in hex: `0A 01 00 3A 01 00 00 00 00 00 02 3C 00 FB 34 9B` 
-* value[0:3] = `0A 01 00`: swap bytes (little endian) -> `00010A`: first byte (00) is plus sign, convert `010A` to decimal: 266 --> +266 * 0.1 °C = 26.6 Celsius
+* value[0:2] = `0A 01`: swap bytes (little endian) -> `010A`: first byte (00) is plus sign, convert `010A` to decimal: 266 -> +266 * 0.1 °C = 26.6 °C
+* value[3] = `00`: unknown, seems to be constant
 * value[4:6] = `3A 01 00`: swap bytes (little endian) -> `00013A` = 314 lux
 * value[7] = `00` = 0% soil moisture
 * value[8] = `00` = 0% conductivity
-* value[9:15] = `00 00 02 3C 00 FB 34 9B` --> unknown, seems to be a fixed constant
+* value[9:15] = `00 00 02 3C 00 FB 34 9B` -> unknown, seems to be constant
 
 **Battery level and firmware version**
 
@@ -52,4 +54,4 @@ The battery level and firmware version can be directly read and both are stored 
 * value output: string = `d+3.2.2` / hex = `64 2B 33 2E 32 2E 32` 
 * value[0] = `64` = 100 % battery level
 * value[1] = `+` or `33`, unknown / possible delimiter or saved space for later, higher firmware versions
-* value[2:6] = `2E 32 2E 32`  or the rest of string = 3.2.2 firmware version
+* value[2:6] = `2E322E32`  or the rest of string = 3.2.2 firmware version
