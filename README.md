@@ -4,6 +4,8 @@ Bluetooth Low Energy (BLE) connection of Xiaomi's Flower Care Sensor and ESP32.
 
 # Data structure of BLE
 
+## Service for Real-time data, Battery level, firmware version
+
 Description | Service UUID | Start  handle | End handle |
 | ------ | ------ | ------ | ------ |
 Real-time data, Battery Level, Firmware version | 0000**1204**-0000-1000-8000-00805f9b34fb | 49 0x0031 | 57 0x0039 |
@@ -23,6 +25,18 @@ Soil moisture in % | " | " | position 7: uint8 | read |
 Battery level in % | " | " | position 0: int8 | read |
 *unknown (possible delimiter)* | " | " | position 1: ? | read |
 Firmware version (e.g. 3.2.2) | " | " | position 2-6: ASCII Text | read |
+
+## Service for history data and device epoch time
+
+Description | Service UUID | Start  handle | End handle |
+| ------ | ------ | ------ | ------ |
+History data, device epoch time | 0000**1206**-0000-1000-8000-00805f9b34fb | 58 0x003a | 66 0x0042 |
+
+Description | Characteristic UUID| Handle | Value | Properties |
+| ------ | ------ | ------ | ------ | ------ |
+**History data read init** | 0000**1a10**-0000-1000-8000-00805f9b34fb| 0x003e | length = 3 bytes | read, write TODO |
+Write this command before reading history data | " | " | 0xa00000 | write |
+
 
 ## Examples
 
@@ -65,3 +79,8 @@ The battery level and firmware version can be directly read and both are stored 
 * value[0] = `64` = 100 % battery level
 * value[1] = `+` or `33`, unknown / possible delimiter or saved space for later, higher firmware versions
 * value[2:6] = `2E322E32`  or the rest of string = 3.2.2 firmware version
+ 
+# Resources
+
+* Online converter for hex to decimal, ASCII Text, etc. -> https://www.rapidtables.com/convert/number/hex-to-decimal.html
+
