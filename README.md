@@ -13,9 +13,9 @@ Description | Characteristic UUID| Handle | Value | Properties |
 **Real-time data read request** | 0000**1a00**-0000-1000-8000-00805f9b34fb| 51 0x0033 | length = 2 bytes | read, write |
 Write this command before reading real-time data | " | " | 0xa01f | write |
 **Real-time sensor data** | 0000**1a01**-0000-1000-8000-00805f9b34fb| 53 0x0035 | length = 16 bytes | read, write, notify |
-Temperature in +/- 0.1 °C| " | " | position 1-2: int16 | read |
-*unknown, seems to be a fixed 00* | " | " | position 3: ? | read |
-Brightness in lux | " | " | position 4-6: uint32 | read |
+Temperature in +/- 0.1 °C| " | " | position 0-1: int16 | read |
+*unknown, seems to be a fixed 00* | " | " | position 2: ? | read |
+Brightness in lux | " | " | position 3-6: uint32 | read |
 Soil moisture in % | " | " | position 7: uint8 | read |
 µS/cm (indirect measure for pH level) | " | " | position 8-9: uint16 | read |
 *unknown, seems to be a fixed constant*  | " | " | position 10-15: ? | read | 
@@ -40,12 +40,20 @@ After writing the previous mentioned value you should receive a 16 byte long hex
 Ig you're using a hex converter (i.e. [RapidTables](https://www.rapidtables.com/convert/number/hex-to-decimal.html)) make sure you swap the bytes order because the data is encoded in little endian (the least-significant byte is stored at the smallest address).
 
 * value output in hex: `0A 01 00 3A 01 00 00 00 00 00 02 3C 00 FB 34 9B` 
-* value[0:2] = `0A 01`: swap bytes (little endian) -> `010A`: first byte (00) is plus sign, convert `010A` to decimal: 266 -> +266 * 0.1 °C = 26.6 °C
-* value[3] = `00`: unknown, seems to be constant
-* value[4:6] = `3A 01 00`: swap bytes (little endian) -> `00013A` = 314 lux
+* 
+| Position  | 00-01 | 02    | 03-06         | 07    | 08-09     | 10-15 |
+| Hex Value | 0A01  | 00    | 3A010000      | 00    | 0000      | 02 3C 00 FB 34 9B |
+| Type      | int16 | ?     | uint32        | uint8 | uint16    | ? |
+| Value     | 266   | ?     | 314           | 0     | 0         | ? |
+| Description | Temperature in 0.1 °C | unknown, seems to be fixed | Brightness in lux | Moisture in % | Conductivity in µS/cm | unknown, seems to be fixed |
+
+
+* value[0:1] = `0A 01`: swap bytes (little endian) -> `010A`: first byte (00) is plus sign, convert `010A` to decimal: 266 -> +266 * 0.1 °C = 26.6 °C
+* value[2] = `00`: unknown, seems to be constant
+* value[3:6] = `3A 01 00 00`: swap bytes (little endian) -> `0000013A` = 314 lux
 * value[7] = `00` = 0% soil moisture
-* value[8] = `00` = 0% conductivity
-* value[9:15] = `00 00 02 3C 00 FB 34 9B` -> unknown, seems to be constant
+* value[8:9] = `00` = 0 µS/cm conductivity
+* value[10:15] = `00 02 3C 00 FB 34 9B` -> unknown, seems to be constant
 
 **Battery level and firmware version**
 
