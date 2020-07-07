@@ -13,8 +13,8 @@ Description | Characteristic UUID| Handle | Value | Properties |
 **Real-time data read request** | 0000**1a00**-0000-1000-8000-00805f9b34fb| 51 0x0033 | length = 2 bytes | read, write |
 Write this command before reading real-time data | " | " | 0xa01f | write |
 **Real-time sensor data** | 0000**1a01**-0000-1000-8000-00805f9b34fb| 53 0x0035 | length = 16 bytes | read, write, notify |
-Temperature in +/- 0.1 °C| " | " | position 0-2: int16 | read |
-*unknown, seems to be a fixed 00* | " | " | position 2: ? | read |
+Temperature in +/- 0.1 °C| " | " | position 1-2: int16 | read |
+*unknown, seems to be a fixed 00* | " | " | position 3: ? | read |
 Brightness in lux | " | " | position 4-6: uint32 | read |
 Soil moisture in % | " | " | position 7: uint8 | read |
 µS/cm (indirect measure for pH level) | " | " | position 8-9: uint16 | read |
