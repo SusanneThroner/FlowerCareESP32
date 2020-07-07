@@ -40,14 +40,15 @@ After writing the previous mentioned value you should receive a 16 byte long hex
 Ig you're using a hex converter (i.e. [RapidTables](https://www.rapidtables.com/convert/number/hex-to-decimal.html)) make sure you swap the bytes order because the data is encoded in little endian (the least-significant byte is stored at the smallest address).
 
 * value output in hex: `0A 01 00 3A 01 00 00 00 00 00 02 3C 00 FB 34 9B` 
-* 
-| Position  | 00-01     | 02        | 03-06         | 07        | 08-09     | 10-15 |
-| ------    | ------    | ------    | ------        | ------    | ------    | ------    |
-| Hex Value | 0A01  | 00    | 3A010000      | 00    | 0000      | 02 3C 00 FB 34 9B |
-| Type      | int16 | ?     | uint32        | uint8 | uint16    | ? |
-| Value     | 266   | ?     | 314           | 0     | 0         | ? |
-| Description | Temperature in 0.1 °C | unknown, seems to be fixed | Brightness in lux | Moisture in % | Conductivity in µS/cm | unknown, seems to be fixed |
 
+| Bytes     | Hex value     | Type      | Value     | Description                       |
+| ------    | ------        | ------    | ------    | ------                            |
+| 00-01     | 0A01          | int16     | 266       | Temperature in 0.1 °C             |
+| 02        | 00            | ?         | ?         | unknown, seems to be fixed value  |
+| 03-06     | 3A010000      | uint32    | 314       | Brightness in lux                 |
+| 07        | 00            | uint8     | 0         | Moisture in %                     |
+| 08-09     | 0000          | uint16    | 0         | Conductivity in µS/cm             |
+| 10-15     | 023C00FB349B  | ?         | ?         | unknown, seems to be fixed value  |
 
 * value[0:1] = `0A 01`: swap bytes (little endian) -> `010A`: first byte (00) is plus sign, convert `010A` to decimal: 266 -> +266 * 0.1 °C = 26.6 °C
 * value[2] = `00`: unknown, seems to be constant
