@@ -32,10 +32,18 @@ Description | Service UUID | Start  handle | End handle |
 | ------ | ------ | ------ | ------ |
 History data, device epoch time | 0000**1206**-0000-1000-8000-00805f9b34fb | 58 0x003a | 66 0x0042 |
 
-Description | Characteristic UUID| Handle | Value | Properties |
+Attribute Description | Characteristic UUID| Handle | Value | Properties |
 | ------ | ------ | ------ | ------ | ------ |
-**History data read init** | 0000**1a10**-0000-1000-8000-00805f9b34fb| 0x003e | length = 3 bytes | read, write TODO |
-Write this command before reading history data | " | " | 0xa00000 | write |
+**History data read request** | 0000**1a10**-0000-1000-8000-00805f9b34fb| 0x003e | length = 3 bytes | read, write TODO |
+Write this command to init reading of history data | " | " | 0xa00000 | write |
+Then this command to read entry #0 | " | " | a10000 | write |
+Write this command to read entry #1 | " | " | a10100 | write |
+Write this command to read entry ... | " | " | ... | write |
+**History data read previous selected entry** | 0000**1a11**-0000-1000-8000-00805f9b34fb| 60 0x003c | length = 16 bytes | read |
+**Device epoch time** | 0000**1a12**-0000-1000-8000-00805f9b34fb| 65 0x00**41** | length = 4 bytes | read |
+Seconds since boot | " | " | position 0-3: uint32 | read |
+
+
 
 
 ## Examples
@@ -79,6 +87,11 @@ The battery level and firmware version can be directly read and both are stored 
 * value[0] = `64` = 100 % battery level
 * value[1] = `+` or `33`, unknown / possible delimiter or saved space for later, higher firmware versions
 * value[2:6] = `2E322E32`  or the rest of string = 3.2.2 firmware version
+
+**Device epoch time**
+
+* value output in hex = `00 13 7C 7F`
+* value[0-3] = `00 13 7C 7F`: swap bytes -> `7F7c1300` to decimal: 2138837760 seconds
  
 # Resources
 
