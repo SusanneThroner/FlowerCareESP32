@@ -37,18 +37,18 @@ Writing the value `a01f` to its handle will change the data mode and you'll rece
 **Real-time data**
 
 After writing the previous mentioned value you should receive a 16 byte long hex number of your flower care containing the real-time sensor data. (If you get zeros only, check the previous section.) 
-Ig you're using a hex converter (i.e. [RapidTables](https://www.rapidtables.com/convert/number/hex-to-decimal.html)) make sure you swap the bytes order because the data is encoded in little endian (the least-significant byte is stored at the smallest address).
+If you're using a hex converter (i.e. [RapidTables](https://www.rapidtables.com/convert/number/hex-to-decimal.html)) to get the actual values, make sure you swap the bytes order because the data is encoded in little endian (the least-significant byte is stored at the smallest address).
 
 * value output in hex: `0A 01 00 3A 01 00 00 00 00 00 02 3C 00 FB 34 9B` 
 
-| Bytes     | Hex value     | Type      | Value     | Description                       |
-| ------    | ------        | ------    | ------    | ------                            |
-| 00-01     | 0A01          | int16     | 266       | Temperature in 0.1 °C             |
-| 02        | 00            | ?         | ?         | unknown, seems to be fixed value  |
-| 03-06     | 3A010000      | uint32    | 314       | Brightness in lux                 |
-| 07        | 00            | uint8     | 0         | Moisture in %                     |
-| 08-09     | 0000          | uint16    | 0         | Conductivity in µS/cm             |
-| 10-15     | 023C00FB349B  | ?         | ?         | unknown, seems to be fixed value  |
+| Bytes     | Hex value     | Swapped bytes |   Type      | Value   | Description                       |
+| ------    | ------        | ------        | ------    | ------    | ------                            |
+| 00-01     | 0A01          | 010A          | int16     | 266       | Temperature in 0.1 °C             |
+| 02        | 00            | 00            | ?         | ?         | unknown, seems to be fixed value  |
+| 03-06     | 3A010000      | 0000013A      | uint32    | 314       | Brightness in lux                 |
+| 07        | 00            | 00            | uint8     | 0         | Moisture in %                     |
+| 08-09     | 0000          | 0000          | uint16    | 0         | Conductivity in µS/cm             |
+| 10-15     | 023C00FB349B  | 9B34FB003C02  | ?         | ?         | unknown, seems to be fixed value  |
 
 * value[0:1] = `0A 01`: swap bytes (little endian) -> `010A`: first byte (00) is plus sign, convert `010A` to decimal: 266 -> +266 * 0.1 °C = 26.6 °C
 * value[2] = `00`: unknown, seems to be constant
