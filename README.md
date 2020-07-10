@@ -112,7 +112,7 @@ Callback: onDisconnect.
 
 ## Usage
 
-* Download the Arduino sketch `flowerCareBLE` and open it in Arduino
+* Download this repository and open the sketch `flowerCareESP32.ino` in the equally named directory in Arduino.
 * Connect your ESP32 via USB to your computer
 * Open Serial Monitor: `Tools > Serial Monitor`
 * On bottom set Serial Monitor to: `11520 baud` for receiving outpu
