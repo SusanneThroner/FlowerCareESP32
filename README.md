@@ -11,9 +11,9 @@ The flower care is portable device powered by a CR2032 button battery, with a wi
 
 *Note: I've used the flower care's internation version with firmware 3.2.2.*
 
-*Sources: 
-* *https://www.mobilegeeks.de/test/xiaomi-flower-care-smart-sensor-im-test-gruener-daumen-dank-technik/*
-* *https://www.amazon.de/Xiaomi-Flower-Smart-Sensor-Pflanzenmonitor/dp/B074TY93JM*
+Sources: 
+* https://www.mobilegeeks.de/test/xiaomi-flower-care-smart-sensor-im-test-gruener-daumen-dank-technik/
+* https://www.amazon.de/Xiaomi-Flower-Smart-Sensor-Pflanzenmonitor/dp/B074TY93JM
 
 * In my opinion the recommended µS/cm ranges in the app are very broad and independent of actual plant size.
  
