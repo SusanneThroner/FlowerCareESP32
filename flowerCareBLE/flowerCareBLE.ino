@@ -11,7 +11,7 @@
 // For BLE connection:
 
 // Uncomment to get more information printed out
-// #define DEBUG
+ #define DEBUG
 #ifdef DEBUG
   #define DEBUG_PRINT(x)  Serial.print(x)
   #define DEBUG_PRINTF(x,y)  Serial.printf(x,y)
@@ -56,17 +56,21 @@ static boolean readingHistoricalEntries = false;
 static int lastValidHistoricalEntryIndx = 0;
 
 // CLASSES -------------------------------------------------------------------------------------------
+
+// A real-time entry ouput example of 16 bytes in Hex: "0E 01 00 48 02 00 00 28 D0 00 02 3C 00 FB 34 9B". 
+// If using a hex converter, remember to swap bytes order (little endian encoded) to gain correct values.
 class RealTimeEntry
 {
   public:
   RealTimeEntry(std::string value)
   {
     const char *val = value.c_str();
-    temperature = ((int16_t*) val)[0];    // 3 bytes 00-02, last byte is sign
-    brightness = *(uint32_t*) (val+3);    // 4 bytes 03-06
-    moisture = *(uint8_t*) (val+7);       // 1 byte  07
-    conductivity = *(uint16_t*) (val+8);  // 2 bytes 08-09
-    // bytes 10-15 unknown
+    temperature = ((int16_t*) val)[0];    // 2 bytes at pos 00-01: "0E 01"        -> 270 * 0.1°C = 27.0 °C
+    // 1 byte at pos 02 unknown, seems to be fixed value of "0x00"
+    brightness = *(uint32_t*) (val+3);    // 4 bytes at pos 03-06: "48 02 00 00"  -> 584 lux
+    moisture = *(uint8_t*) (val+7);       // 1 byte  at pos 07:    "28"           -> 40%
+    conductivity = *(uint16_t*) (val+8);  // 2 bytes at pos 08-09: "D0 00"        -> 208 µS/cm
+    // 6 bytes at pos 10-15 unknown, seems to be fixed value of "0x02 3C 00 FB 34 9B" 
   }
   std::string toString()
   {
@@ -74,7 +78,7 @@ class RealTimeEntry
     int count = 0;
     count += snprintf(buffer, sizeof(buffer), "Temperature: %2.1f °C\n", ((float)this->temperature)/10);
     count += snprintf(buffer+count, sizeof(buffer)-count, "Brightness: %u lux\n", this->brightness);
-    count += snprintf(buffer+count, sizeof(buffer)-count, "Soil moisture: %d \n", this->moisture);
+    count += snprintf(buffer+count, sizeof(buffer)-count, "Soil moisture: %d %s\n", this->moisture, "%");
     count += snprintf(buffer+count, sizeof(buffer)-count, "Conductivity: %" PRIu16 " µS/cm \n", this->conductivity);
     return (std::string)buffer;
   }
@@ -84,18 +88,21 @@ class RealTimeEntry
   uint16_t conductivity; // in µS/cm
 };
 
+// A historical entry ouput example of 16 bytes in Hex: "A0 22 4C 00 14 01 00 E9 03 00 00 05 28 00 00 00". 
+// If using a hex converter, remember to swap bytes order (little endian encoded) to gain correct values.
 class HistoricalEntry
 {
   public:
   HistoricalEntry(std::string value)
   {
     const char *val = value.c_str();
-    timestamp = ((uint32_t*) val)[0];     // 4 bytes 00-03
-    temperature = *(int16_t*) (val+4);    // 3 bytes 04-06, last byte is sign
-    brightness = *(uint32_t*) (val+7);    // 4 bytes 07-10
-    moisture = *(uint8_t*) (val+11);      // 1 byte  11
-    conductivity = *(uint16_t*) (val+12); // 2 bytes 12-13
-    // bytes 14-15 unknown
+    timestamp = ((uint32_t*) val)[0];     // 4 bytes at pos 00-03: "A0 22 4C 00"  -> 4989600 seconds
+    temperature = *(int16_t*) (val+4);    // 2 bytes at pos 04-05: "14 01"        -> 276 * 0.1°C = 27.6 °C
+    // 1 byte at pos 6 unknown, seems to be fixed value of "0x00"
+    brightness = *(uint32_t*) (val+7);    // 4 bytes at pos 07-10: "E9 03 00 00"  -> 1001 lux
+    moisture = *(uint8_t*) (val+11);      // 1 byte  at pos 11:    "05"           -> 5 % 
+    conductivity = *(uint16_t*) (val+12); // 2 bytes at pos 12-13: "28 00"        -> 40 µS/cm 
+    // 2 bytes at pos 14-15 unknown, seems to be fixed value of "0x00 00"
   }
 
   std::string toString()
@@ -105,7 +112,7 @@ class HistoricalEntry
     count += snprintf(buffer, sizeof(buffer), "Timestamp: %" PRIu32 " seconds\n", this->timestamp);
     count += snprintf(buffer+count, sizeof(buffer)-count, "Temperature: %2.1f °C\n", ((float)this->temperature)/10);
     count += snprintf(buffer+count, sizeof(buffer)-count, "Brightness: %u lux\n", this->brightness);
-    count += snprintf(buffer+count, sizeof(buffer)-count, "Soil moisture: %d \n", this->moisture);
+    count += snprintf(buffer+count, sizeof(buffer)-count, "Soil moisture: %d %s\n", this->moisture, "%");
     count += snprintf(buffer+count, sizeof(buffer)-count, "Conductivity: %" PRIu16 " µS/cm \n", this->conductivity);
     return (std::string)buffer;
   }
@@ -191,12 +198,13 @@ class FlowerCare {
       pClient->connect(myDevice);  // Connect to the remove BLE Server.
   }
 
-  
+  // Device's mac address usually starts with: "c4:7c:8d:xx:xx:xx"
   std::string getMacAddress()
   {
     return _macAddress;
   }
-  
+
+  // The name usually is "Flower care"
   std::string getName()
   {
     return _name;
@@ -207,7 +215,7 @@ class FlowerCare {
   int getBatteryLevel()
   {
      std::string value = readValue(serviceBatteryFirmwareRealTimeDataUUID, characteristicFirmwareAndBatteryUUID);
-     _batteryLevel = (int)value[0];
+     _batteryLevel = (uint8_t)value[0];
      return _batteryLevel;
   }
   
@@ -301,7 +309,7 @@ class FlowerCare {
   private:
   std::string _macAddress = "c4:7c:xx:xx:xx:xx";
   std::string _name;
-  int _batteryLevel;
+  uint8_t _batteryLevel;
   std::string _firmwareVersion = "";
   uint32_t _epochTime;
 
