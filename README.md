@@ -7,15 +7,13 @@ The flower care is portable device powered by a CR2032 button battery, with a wi
 * **Light sensor**: measures brightness in lux, range: 0 –  100000 lux
 * **Air Temperature sensor**: measures air temperature in C, range -20C – 50C, precision: 0.5 C
 * **Soil moisture sensor**: measures moisture within soil in %
-* **"Soil Fertility sensor"**: measures conductivity in µS/cm (Note: this measure is dependent on moisture, more moisture always will yield higher conductivity levels *).
+* **"Soil Fertility sensor"**: measures conductivity in µS/cm (Note: this measure is dependent on moisture, more moisture always will yield higher conductivity levels).
 
-*Note: I've used the flower care's internation version with firmware 3.2.2.*
+*Note: I've used the flower care's international version with firmware 3.2.2.*
 
 Sources: 
 * https://www.mobilegeeks.de/test/xiaomi-flower-care-smart-sensor-im-test-gruener-daumen-dank-technik/
 * https://www.amazon.de/Xiaomi-Flower-Smart-Sensor-Pflanzenmonitor/dp/B074TY93JM
-
-* In my opinion the recommended µS/cm ranges in the app are very broad and independent of actual plant size.
  
 ## API Features
 
