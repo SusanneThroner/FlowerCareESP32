@@ -112,10 +112,14 @@ Callback: onDisconnect.
 
 ## Usage
 
-* Download this repository and open the sketch `flowerCareESP32.ino` in the equally named directory in Arduino.
+This project uses the [Arduino IDE ](https://www.arduino.cc/en/main/software) v 1.8.10 and uses Neil Kolban's BLE library ([archived github source](https://github.com/nkolban/ESP32_BLE_Arduino)) which is included directly in Arduino's add-on for the ESP32. 
+
+
+* Getting started: if you have never used Arduino IDE or ESP32 with Arduino briefly checkout this [wiki](https://github.com/SusanneThroner/FlowerCareESP32/wiki) to install Arduino IDE and ESP32 Add-ons by Espressif Systems.
+* Download this repository and open the `flowerCareESP32.ino` in the equally named directory in Arduino.
 * Connect your ESP32 via USB to your computer
 * Open Serial Monitor: `Tools > Serial Monitor`
-* On bottom set Serial Monitor to: `11520 baud` for receiving outpu
+* On bottom set Serial Monitor to: `11520 baud` for receiving output.
 * Select your board, i.e.: `Tools > Board 'NodeMCU-32s'`
 * Upload sketch to your ESP
 * You can receive more detailled information, like BLE properties and hex values, by uncommenting the debug preprocessor: `#define DEBUG` at the beginning of the script
@@ -250,6 +254,14 @@ After selection of a historical data entry you will receive 16 hex bytes, i.e.:
 | 11        | 05            | 05            | uint8     | 5         |  Moisture in %             |
 | 12-13     | 2800          | 0028          | uint16    | 40        | Conductivity in µS/cm  |
 | 14-15     | 0000          | 0000          | ?         | ?         | unknown, seems to be fixed value |
+
+# Test SPECS 
+
+Tested with: 
+* Windows 10
+* Arduino IDE v1.8.10
+* ESP32 (NodeMCU ESP-32)
+* Arduino Add-on esp32 by Espressif Systems v1.0.4 with included ESP32 BLE library v 1.0.1
 
 # Resources
 
